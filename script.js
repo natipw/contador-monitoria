@@ -5,7 +5,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const processReportBtn = document.getElementById('process-report-btn');
     
     // Divs de resultados
-    const resultsArea = document.getElementById('results-area');
     const eligibleAnalystsSection = document.getElementById('eligible-analysts-section');
     const distributionSection = document.getElementById('distribution-section');
     const eligibleAnalystsTable = document.getElementById('eligible-analysts-table');
@@ -23,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'IDCloud': 20,
         'B2C': 30,
         'Privacidade': 0,
-        'Institucional': 0 // Adicionando outros produtos se necessário
+        'Institucional': 0
     };
 
     // --- EVENTO PRINCIPAL ---
@@ -36,29 +35,73 @@ document.addEventListener('DOMContentLoaded', () => {
         Papa.parse(reportFileInput.files[0], {
             header: true,
             skipEmptyLines: true,
+            transformHeader: header => header.trim(), // Limpa espaços em branco dos cabeçalhos
             complete: (results) => {
-                // A mágica acontece aqui!
                 processFullReport(results.data);
             }
         });
     });
+    
+    /**
+     * FUNÇÃO DE AJUDA: Normaliza uma data de DD/MM/AAAA para um objeto Date.
+     * @param {string} dateString - A data do CSV.
+     * @returns {Date|null} - O objeto Date ou nulo se o formato for inválido.
+     */
+    function parseDate(dateString) {
+        if (!dateString) return null;
+        // Tenta formato AAAA-MM-DD ou AAAA/MM/DD
+        if (dateString.match(/^\d{4}[-\/]\d{2}[-\/]\d{2}$/)) {
+            return new Date(dateString + 'T00:00:00');
+        }
+        // Tenta formato DD/MM/AAAA ou DD-MM-AAAA
+        if (dateString.match(/^\d{2}[-\/]\d{2}[-\/]\d{4}$/)) {
+            const parts = dateString.split(/[-\/]/);
+            // Formato para o construtor Date: AAAA, MÊS (0-11), DIA
+            return new Date(parts[2], parts[1] - 1, parts[0]);
+        }
+        console.warn('Formato de data não reconhecido:', dateString);
+        return null;
+    }
 
     /**
-     * Função principal que orquestra todo o processo.
-     * @param {Array} reportData - Os dados completos do CSV.
+     * FUNÇÃO DE AJUDA: Encontra um valor em um objeto 'row' usando múltiplas chaves possíveis.
+     * @param {Object} row - A linha de dados do CSV.
+     * @param {Array<string>} keys - Um array de possíveis nomes de coluna.
+     * @returns {string|null} - O valor encontrado ou nulo.
      */
-    function processFullReport(reportData) {
-        // 1. Encontrar os analistas que trabalharam > 10 dias seguidos.
-        const eligibleAnalystsData = findEligibleAnalysts(reportData);
+    function getValueFromRow(row, keys) {
+        for (const key of keys) {
+            if (row[key] !== undefined && row[key] !== null) {
+                return row[key];
+            }
+        }
+        // Tentativa extra com case-insensitive para robustez máxima
+        const rowKeys = Object.keys(row);
+        for (const key of keys) {
+            const foundKey = rowKeys.find(rk => rk.toLowerCase() === key.toLowerCase());
+            if (foundKey) {
+                return row[foundKey];
+            }
+        }
+        return null;
+    }
 
-        // 2. Mostrar a tabela de analistas elegíveis.
+
+    function processFullReport(reportData) {
+        // Mapeia os nomes de coluna que vamos procurar
+        const columnKeys = {
+            name: ['NOME', 'ANALISTA', 'NALISTA'],
+            date: ['DATA'],
+            scale: ['ESCALA'],
+            monitor: ['SUB OPERACÃO', 'SUB OPERAÇÃO', 'SubOperacao'],
+            product: ['PRODUTO', 'ProdutoPrincipal']
+        };
+
+        const eligibleAnalystsData = findEligibleAnalysts(reportData, columnKeys);
         displayEligibleAnalysts(eligibleAnalystsData);
 
-        // 3. Pegar apenas os dados únicos dos analistas elegíveis para a distribuição.
-        const analystsForDistribution = getUniqueEligibleAnalysts(reportData, eligibleAnalystsData.map(a => a.name));
-        
-        // 4. Calcular e exibir a distribuição das 800 monitorias.
-        if (analystsForDistribution.length > 0) {
+        if (eligibleAnalystsData.length > 0) {
+            const analystsForDistribution = getUniqueEligibleAnalysts(reportData, eligibleAnalystsData.map(a => a.name), columnKeys);
             calculateAndDisplayDistribution(analystsForDistribution);
         } else {
             distributionSection.style.display = 'block';
@@ -67,34 +110,33 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    /**
-     * Parte 1: Encontra analistas com mais de 10 dias de trabalho consecutivos.
-     * @param {Array} data - Todos os registros do relatório.
-     * @returns {Array} - Uma lista de objetos { name, streak } para os elegíveis.
-     */
-    function findEligibleAnalysts(data) {
+    function findEligibleAnalysts(data, keys) {
         const analystsWorkDays = {};
         
         data.forEach(row => {
-            const analystName = row.NOME || row.ANALISTA || row.NALISTA;
-            const dateValue = row.DATA;
-            const scaleStatus = (row.ESCALA || '').toLowerCase();
+            const analystName = getValueFromRow(row, keys.name);
+            const dateString = getValueFromRow(row, keys.date);
+            const scaleStatus = (getValueFromRow(row, keys.scale) || '').toLowerCase();
 
-            if (!analystName || !dateValue || scaleStatus.includes('folga') || scaleStatus.includes('férias') || scaleStatus.includes('ferias')) {
+            const parsedDate = parseDate(dateString);
+
+            if (!analystName || !parsedDate || scaleStatus.includes('folga') || scaleStatus.includes('férias') || scaleStatus.includes('ferias')) {
                 return;
             }
 
             if (!analystsWorkDays[analystName]) {
-                analystsWorkDays[analystName] = [];
+                analystsWorkDays[analystName] = new Set();
             }
-            analystsWorkDays[analystName].push(new Date(dateValue + 'T00:00:00'));
+            // Usar set.add para evitar datas duplicadas no mesmo dia
+            analystsWorkDays[analystName].add(parsedDate.getTime());
         });
 
         const longStreakAnalysts = [];
         for (const name in analystsWorkDays) {
-            if (analystsWorkDays[name].length <= 10) continue;
+            if (analystsWorkDays[name].size <= 10) continue;
 
-            const dates = [...new Set(analystsWorkDays[name])].sort((a, b) => a - b);
+            const dates = Array.from(analystsWorkDays[name]).map(time => new Date(time)).sort((a, b) => a - b);
+            
             let currentStreak = 1;
             let maxStreak = 1;
 
@@ -116,44 +158,25 @@ document.addEventListener('DOMContentLoaded', () => {
         return longStreakAnalysts;
     }
 
-    /**
-     * Extrai os dados únicos (nome, monitor, produto) apenas dos analistas que foram considerados elegíveis.
-     * @param {Array} allData - Todos os registros do relatório.
-     * @param {Array} eligibleNames - Array com os nomes dos analistas elegíveis.
-     * @returns {Array} - Lista de objetos únicos { name, monitor, product } para distribuição.
-     */
-    function getUniqueEligibleAnalysts(allData, eligibleNames) {
+    function getUniqueEligibleAnalysts(allData, eligibleNames, keys) {
         const uniqueEligible = {};
         allData.forEach(row => {
-            const analystName = row.NOME || row.ANALISTA || row.NALISTA;
+            const analystName = getValueFromRow(row, keys.name);
             
-            // Se o analista da linha atual está na nossa lista de elegíveis...
             if (eligibleNames.includes(analystName)) {
-                // ...armazenamos/atualizamos suas informações.
-                // Isso garante que pegaremos a última informação de monitor/produto do mês.
                 uniqueEligible[analystName] = {
                     name: analystName,
-                    monitor: row['SUB OPERACÃO'] || row.SubOperacao, // Flexibilidade nos nomes de coluna
-                    product: row.PRODUTO || row.ProdutoPrincipal
+                    monitor: getValueFromRow(row, keys.monitor),
+                    product: getValueFromRow(row, keys.product)
                 };
             }
         });
         return Object.values(uniqueEligible);
     }
 
-    /**
-     * Parte 2: Calcula a distribuição das monitorias e exibe os resultados.
-     * @param {Array} analysts - A lista filtrada e única de analistas elegíveis.
-     */
     function calculateAndDisplayDistribution(analysts) {
         let finalAllocation = [];
-        const monitors = {
-            'Bru': { analysts: {}, totalMonitorias: 0 },
-            'Nati': { analysts: {}, totalMonitorias: 0 },
-            'Will': { analysts: {}, totalMonitorias: 0 }
-        };
 
-        // Agrupar os analistas elegíveis por produto
         const analystsByProduct = {};
         analysts.forEach(analyst => {
             if (!analyst.product) return;
@@ -163,7 +186,6 @@ document.addEventListener('DOMContentLoaded', () => {
             analystsByProduct[analyst.product].push(analyst);
         });
 
-        // Distribuir as monitorias por produto
         for (const productName in PRODUCT_ALLOCATION) {
             const totalMonitoriasProduto = PRODUCT_ALLOCATION[productName];
             const analystsForProduct = analystsByProduct[productName] || [];
@@ -173,7 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let baseMonitorias = Math.floor(totalMonitoriasProduto / analystsForProduct.length);
             let remainder = totalMonitoriasProduto % analystsForProduct.length;
 
-            analystsForProduct.forEach((analyst, index) => {
+            analystsForProduct.forEach((analyst) => {
                 const allocated = baseMonitorias + (remainder-- > 0 ? 1 : 0);
                 finalAllocation.push({ ...analyst, monitorias: allocated });
             });
@@ -181,7 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
         displayDistributionResults(finalAllocation);
     }
     
-    // --- FUNÇÕES DE EXIBIÇÃO NA TELA ---
+    // --- FUNÇÕES DE EXIBIÇÃO NA TELA (sem alterações) ---
 
     function displayEligibleAnalysts(analysts) {
         eligibleAnalystsSection.style.display = 'block';
@@ -190,12 +212,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         let tableHTML = `
-            <table>
-                <thead>
-                    <tr><th>Analista Elegível</th><th>Dias Consecutivos (Máx)</th></tr>
-                </thead>
-                <tbody>
-        `;
+            <table><thead><tr><th>Analista Elegível</th><th>Dias Consecutivos (Máx)</th></tr></thead><tbody>`;
+        analysts.sort((a,b) => a.name.localeCompare(b.name));
         analysts.forEach(a => {
             tableHTML += `<tr><td>${a.name}</td><td><strong>${a.streak}</strong></td></tr>`;
         });
@@ -206,10 +224,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function displayDistributionResults(allocation) {
         distributionSection.style.display = 'block';
         
-        // --- Gerar tabela de resumo por monitor ---
         const summary = {};
         let totalGeral = 0;
         allocation.forEach(item => {
+            if (!item.monitor) return; // Ignora se não houver monitor
             if (!summary[item.monitor]) {
                 summary[item.monitor] = { total: 0, products: {} };
             }
@@ -235,12 +253,11 @@ document.addEventListener('DOMContentLoaded', () => {
         summaryHTML += '</tbody></table>';
         summaryTableDiv.innerHTML = summaryHTML;
 
-        // --- Gerar tabela detalhada por analista ---
         let detailHTML = `
             <table><thead><tr><th>Analista</th><th>Monitor</th><th>Produto</th><th>Qtd. Monitorias</th></tr></thead><tbody>`;
         allocation.sort((a, b) => (a.monitor || '').localeCompare(b.monitor || '') || a.name.localeCompare(b.name));
         allocation.forEach(item => {
-            detailHTML += `<tr><td>${item.name}</td><td>${item.monitor}</td><td>${item.product}</td><td>${item.monitorias}</td></tr>`;
+            detailHTML += `<tr><td>${item.name}</td><td>${item.monitor || 'N/A'}</td><td>${item.product || 'N/A'}</td><td>${item.monitorias}</td></tr>`;
         });
         detailHTML += '</tbody></table>';
         detailTableDiv.innerHTML = detailHTML;
