@@ -5,49 +5,40 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ferramenta de Monitoria de Qualidade</title>
     <link rel="stylesheet" href="style.css">
-
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
 </head>
 <body>
-
     <header>
         <h1>Processador de Monitoria Mensal</h1>
     </header>
-
     <main>
         <section class="card">
             <h2>Automação da Distribuição de Monitorias</h2>
             <p>
-                Faça o upload do <strong>único relatório mensal</strong> em formato CSV. O arquivo precisa conter as colunas: <br>
-                <strong>NOME (ou ANALISTA), DATA, ESCALA, SUB OPERACÃO, e PRODUTO.</strong>
+                Faça o upload do seu relatório de escala mensal em formato CSV.<br>
+                A ferramenta irá analisar os dias trabalhados e distribuir as 800 monitorias.
             </p>
             <input type="file" id="report-file-input" accept=".csv">
             <button id="process-report-btn">Processar Relatório Completo</button>
             
             <div id="results-area">
-             
+                <!-- Seção de Resultados 1: Analistas Elegíveis -->
                 <div id="eligible-analysts-section" style="display:none;">
                     <h3>1. Analistas Elegíveis (> 10 dias de trabalho consecutivos)</h3>
                     <div id="eligible-analysts-table"></div>
                 </div>
 
-            
+                <!-- Seção de Resultados 2: Distribuição Final -->
                 <div id="distribution-section" style="display:none;">
-                    <h3>2. Distribuição das 800 Monitorias (Apenas entre os elegíveis)</h3>
-                    <h4>Resumo por Monitor</h4>
-                    <div id="allocation-summary-table"></div>
-                    <h4>Detalhado por Analista</h4>
+                    <h3>2. Distribuição Final das Monitorias</h3>
                     <div id="allocation-detail-table"></div>
                 </div>
             </div>
-            
         </section>
     </main>
-
     <footer>
         <p>Desenvolvido para automatizar o processo de Monitoria de Qualidade.</p>
     </footer>
-
     <script src="script.js"></script>
 </body>
 </html>
