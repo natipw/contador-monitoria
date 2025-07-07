@@ -11,44 +11,36 @@
 <body>
 
     <header>
-        <h1>Ferramenta de Automação de Monitoria de Qualidade</h1>
+        <h1>Processador de Monitoria Mensal</h1>
     </header>
 
     <main>
-        <!-- SEÇÃO 1: ANÁLISE DE ESCALA DE ANALISTAS -->
         <section class="card">
-            <h2>1. Análise de Escala (Trabalhou > 10 dias seguidos?)</h2>
+            <h2>Automação da Distribuição de Monitorias</h2>
             <p>
-                Faça o upload de um arquivo CSV com as colunas: <strong>Analista, Data</strong>.<br>
-                A data deve estar no formato AAAA-MM-DD.
+                Faça o upload do <strong>único relatório mensal</strong> em formato CSV. O arquivo precisa conter as colunas: <br>
+                <strong>NOME (ou ANALISTA), DATA, ESCALA, SUB OPERACÃO, e PRODUTO.</strong>
             </p>
-            <input type="file" id="schedule-file-input" accept=".csv">
-            <button id="process-schedule-btn">Processar Escala</button>
-            <h3>Resultado da Análise de Escala:</h3>
-            <div id="schedule-results-table">
-                <!-- A tabela de resultados será inserida aqui pelo JavaScript -->
-            </div>
-        </section>
-
-        <!-- SEÇÃO 2: DISTRIBUIÇÃO DE MONITORIAS -->
-        <section class="card">
-            <h2>2. Distribuição das 800 Monitorias</h2>
-            <p>
-                Faça o upload de um arquivo CSV com os analistas do mês. Colunas necessárias: <strong>Analista, SubOperacao, ProdutoPrincipal</strong>.<br>
-                (SubOperacao = Bru, Nati, Will | ProdutoPrincipal = Check, IDPay, etc.)
-            </p>
-            <input type="file" id="allocation-file-input" accept=".csv">
-            <button id="process-allocation-btn">Distribuir Monitorias</button>
+            <input type="file" id="report-file-input" accept=".csv">
+            <button id="process-report-btn">Processar Relatório Completo</button>
             
-            <h3>Resumo da Distribuição por Monitor:</h3>
-            <div id="allocation-summary-table">
-                <!-- A tabela de resumo será inserida aqui -->
-            </div>
+            <div id="results-area">
+                <!-- Seção de Resultados 1: Analistas Elegíveis -->
+                <div id="eligible-analysts-section" style="display:none;">
+                    <h3>1. Analistas Elegíveis (> 10 dias de trabalho consecutivos)</h3>
+                    <div id="eligible-analysts-table"></div>
+                </div>
 
-            <h3>Distribuição Detalhada por Analista:</h3>
-            <div id="allocation-detail-table">
-                <!-- A tabela detalhada será inserida aqui -->
+                <!-- Seção de Resultados 2: Distribuição das Monitorias -->
+                <div id="distribution-section" style="display:none;">
+                    <h3>2. Distribuição das 800 Monitorias (Apenas entre os elegíveis)</h3>
+                    <h4>Resumo por Monitor</h4>
+                    <div id="allocation-summary-table"></div>
+                    <h4>Detalhado por Analista</h4>
+                    <div id="allocation-detail-table"></div>
+                </div>
             </div>
+            
         </section>
     </main>
 
