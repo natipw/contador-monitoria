@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ferramenta de Monitoria de Qualidade</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Incluindo a biblioteca PapaParse para ler arquivos CSV facilmente -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+</head>
+<body>
+
+    <header>
+        <h1>Ferramenta de Automação de Monitoria de Qualidade</h1>
+    </header>
+
+    <main>
+        <!-- SEÇÃO 1: ANÁLISE DE ESCALA DE ANALISTAS -->
+        <section class="card">
+            <h2>1. Análise de Escala (Trabalhou > 10 dias seguidos?)</h2>
+            <p>
+                Faça o upload de um arquivo CSV com as colunas: <strong>Analista, Data</strong>.<br>
+                A data deve estar no formato AAAA-MM-DD.
+            </p>
+            <input type="file" id="schedule-file-input" accept=".csv">
+            <button id="process-schedule-btn">Processar Escala</button>
+            <h3>Resultado da Análise de Escala:</h3>
+            <div id="schedule-results-table">
+                <!-- A tabela de resultados será inserida aqui pelo JavaScript -->
+            </div>
+        </section>
+
+        <!-- SEÇÃO 2: DISTRIBUIÇÃO DE MONITORIAS -->
+        <section class="card">
+            <h2>2. Distribuição das 800 Monitorias</h2>
+            <p>
+                Faça o upload de um arquivo CSV com os analistas do mês. Colunas necessárias: <strong>Analista, SubOperacao, ProdutoPrincipal</strong>.<br>
+                (SubOperacao = Bru, Nati, Will | ProdutoPrincipal = Check, IDPay, etc.)
+            </p>
+            <input type="file" id="allocation-file-input" accept=".csv">
+            <button id="process-allocation-btn">Distribuir Monitorias</button>
+            
+            <h3>Resumo da Distribuição por Monitor:</h3>
+            <div id="allocation-summary-table">
+                <!-- A tabela de resumo será inserida aqui -->
+            </div>
+
+            <h3>Distribuição Detalhada por Analista:</h3>
+            <div id="allocation-detail-table">
+                <!-- A tabela detalhada será inserida aqui -->
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Desenvolvido para automatizar o processo de Monitoria de Qualidade.</p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
