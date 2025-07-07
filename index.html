@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ferramenta de Monitoria de Qualidade</title>
     <link rel="stylesheet" href="style.css">
-    <!-- Incluindo a biblioteca PapaParse para ler arquivos CSV facilmente -->
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
 </head>
 <body>
@@ -25,13 +25,13 @@
             <button id="process-report-btn">Processar Relatório Completo</button>
             
             <div id="results-area">
-                <!-- Seção de Resultados 1: Analistas Elegíveis -->
+             
                 <div id="eligible-analysts-section" style="display:none;">
                     <h3>1. Analistas Elegíveis (> 10 dias de trabalho consecutivos)</h3>
                     <div id="eligible-analysts-table"></div>
                 </div>
 
-                <!-- Seção de Resultados 2: Distribuição das Monitorias -->
+            
                 <div id="distribution-section" style="display:none;">
                     <h3>2. Distribuição das 800 Monitorias (Apenas entre os elegíveis)</h3>
                     <h4>Resumo por Monitor</h4>
