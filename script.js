@@ -1,41 +1,100 @@
 document.addEventListener('DOMContentLoaded', () => {
 
-    // --- LÓGICA DA PARTE 1: ANÁLISE DE ESCALA ---
-    const scheduleFileInput = document.getElementById('schedule-file-input');
-    const processScheduleBtn = document.getElementById('process-schedule-btn');
-    const scheduleResultsTable = document.getElementById('schedule-results-table');
+    // --- ELEMENTOS DA PÁGINA ---
+    const reportFileInput = document.getElementById('report-file-input');
+    const processReportBtn = document.getElementById('process-report-btn');
+    
+    // Divs de resultados
+    const resultsArea = document.getElementById('results-area');
+    const eligibleAnalystsSection = document.getElementById('eligible-analysts-section');
+    const distributionSection = document.getElementById('distribution-section');
+    const eligibleAnalystsTable = document.getElementById('eligible-analysts-table');
+    const summaryTableDiv = document.getElementById('allocation-summary-table');
+    const detailTableDiv = document.getElementById('allocation-detail-table');
 
-    processScheduleBtn.addEventListener('click', () => {
-        if (scheduleFileInput.files.length === 0) {
-            alert('Por favor, selecione um arquivo de escala.');
+    // --- CONFIGURAÇÕES GLOBAIS ---
+    const TOTAL_MONITORIAS = 800;
+    const PRODUCT_ALLOCATION = {
+        'Auto': 20,
+        'Check': 640,
+        'Doc': 20,
+        'ID Pay': 50,
+        'ID Unico': 20,
+        'IDCloud': 20,
+        'B2C': 30,
+        'Privacidade': 0,
+        'Institucional': 0 // Adicionando outros produtos se necessário
+    };
+
+    // --- EVENTO PRINCIPAL ---
+    processReportBtn.addEventListener('click', () => {
+        if (reportFileInput.files.length === 0) {
+            alert('Por favor, selecione o relatório mensal em CSV.');
             return;
         }
         
-        Papa.parse(scheduleFileInput.files[0], {
+        Papa.parse(reportFileInput.files[0], {
             header: true,
             skipEmptyLines: true,
             complete: (results) => {
-                processScheduleData(results.data);
+                // A mágica acontece aqui!
+                processFullReport(results.data);
             }
         });
     });
 
-    function processScheduleData(data) {
-        // Agrupa as datas por analista
-        const analysts = {};
+    /**
+     * Função principal que orquestra todo o processo.
+     * @param {Array} reportData - Os dados completos do CSV.
+     */
+    function processFullReport(reportData) {
+        // 1. Encontrar os analistas que trabalharam > 10 dias seguidos.
+        const eligibleAnalystsData = findEligibleAnalysts(reportData);
+
+        // 2. Mostrar a tabela de analistas elegíveis.
+        displayEligibleAnalysts(eligibleAnalystsData);
+
+        // 3. Pegar apenas os dados únicos dos analistas elegíveis para a distribuição.
+        const analystsForDistribution = getUniqueEligibleAnalysts(reportData, eligibleAnalystsData.map(a => a.name));
+        
+        // 4. Calcular e exibir a distribuição das 800 monitorias.
+        if (analystsForDistribution.length > 0) {
+            calculateAndDisplayDistribution(analystsForDistribution);
+        } else {
+            distributionSection.style.display = 'block';
+            summaryTableDiv.innerHTML = '<p>Nenhum analista elegível encontrado para distribuir as monitorias.</p>';
+            detailTableDiv.innerHTML = '';
+        }
+    }
+
+    /**
+     * Parte 1: Encontra analistas com mais de 10 dias de trabalho consecutivos.
+     * @param {Array} data - Todos os registros do relatório.
+     * @returns {Array} - Uma lista de objetos { name, streak } para os elegíveis.
+     */
+    function findEligibleAnalysts(data) {
+        const analystsWorkDays = {};
+        
         data.forEach(row => {
-            if (!row.Analista || !row.Data) return;
-            if (!analysts[row.Analista]) {
-                analysts[row.Analista] = [];
+            const analystName = row.NOME || row.ANALISTA || row.NALISTA;
+            const dateValue = row.DATA;
+            const scaleStatus = (row.ESCALA || '').toLowerCase();
+
+            if (!analystName || !dateValue || scaleStatus.includes('folga') || scaleStatus.includes('férias') || scaleStatus.includes('ferias')) {
+                return;
             }
-            // Adiciona a data como um objeto Date para facilitar a ordenação
-            analysts[row.Analista].push(new Date(row.Data + 'T00:00:00'));
+
+            if (!analystsWorkDays[analystName]) {
+                analystsWorkDays[analystName] = [];
+            }
+            analystsWorkDays[analystName].push(new Date(dateValue + 'T00:00:00'));
         });
 
         const longStreakAnalysts = [];
-        // Para cada analista, verifica os dias consecutivos
-        for (const name in analysts) {
-            const dates = analysts[name].sort((a, b) => a - b);
+        for (const name in analystsWorkDays) {
+            if (analystsWorkDays[name].length <= 10) continue;
+
+            const dates = [...new Set(analystsWorkDays[name])].sort((a, b) => a - b);
             let currentStreak = 1;
             let maxStreak = 1;
 
@@ -48,143 +107,108 @@ document.addEventListener('DOMContentLoaded', () => {
                     currentStreak = 1;
                 }
             }
-            maxStreak = Math.max(maxStreak, currentStreak); // Final check
+            maxStreak = Math.max(maxStreak, currentStreak);
 
             if (maxStreak > 10) {
                 longStreakAnalysts.push({ name, streak: maxStreak });
             }
         }
-        
-        displayScheduleResults(longStreakAnalysts);
-    }
-    
-    function displayScheduleResults(analysts) {
-        if (analysts.length === 0) {
-            scheduleResultsTable.innerHTML = '<p>Nenhum analista trabalhou mais de 10 dias consecutivos.</p>';
-            return;
-        }
-        let tableHTML = `
-            <table>
-                <thead>
-                    <tr>
-                        <th>Analista</th>
-                        <th>Dias Consecutivos (Máx)</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-        analysts.forEach(analyst => {
-            tableHTML += `
-                <tr>
-                    <td>${analyst.name}</td>
-                    <td><strong>${analyst.streak}</strong></td>
-                </tr>
-            `;
-        });
-        tableHTML += '</tbody></table>';
-        scheduleResultsTable.innerHTML = tableHTML;
+        return longStreakAnalysts;
     }
 
-
-    // --- LÓGICA DA PARTE 2: DISTRIBUIÇÃO DE MONITORIAS ---
-    const allocationFileInput = document.getElementById('allocation-file-input');
-    const processAllocationBtn = document.getElementById('process-allocation-btn');
-    const summaryTableDiv = document.getElementById('allocation-summary-table');
-    const detailTableDiv = document.getElementById('allocation-detail-table');
-
-    // CONFIGURAÇÕES BASEADAS NA SUA IMAGEM
-    const TOTAL_MONITORIAS = 800;
-    // Quantidade de monitorias por produto (coluna "QTDE Por produto" da sua imagem)
-    const PRODUCT_ALLOCATION = {
-        'Auto': 20,
-        'Check': 640,
-        'Doc': 20,
-        'ID Pay': 50,
-        'ID Unico': 20,
-        'IDCloud': 20,
-        'B2C': 30,
-        'Privacidade': 0 // O total da imagem é 800, ajustando este para zerar se não tiver
-    };
-    
-    // Adicionei os produtos faltantes da tabela da direita (Institucional)
-    // Se um produto não estiver aqui, não receberá monitorias.
-    // Verifique se a soma está correta! 20+640+20+50+20+20+30 = 800. Perfeito.
-
-    processAllocationBtn.addEventListener('click', () => {
-         if (allocationFileInput.files.length === 0) {
-            alert('Por favor, selecione um arquivo de alocação.');
-            return;
-        }
-        
-        Papa.parse(allocationFileInput.files[0], {
-            header: true,
-            skipEmptyLines: true,
-            complete: (results) => {
-                calculateDistribution(results.data);
+    /**
+     * Extrai os dados únicos (nome, monitor, produto) apenas dos analistas que foram considerados elegíveis.
+     * @param {Array} allData - Todos os registros do relatório.
+     * @param {Array} eligibleNames - Array com os nomes dos analistas elegíveis.
+     * @returns {Array} - Lista de objetos únicos { name, monitor, product } para distribuição.
+     */
+    function getUniqueEligibleAnalysts(allData, eligibleNames) {
+        const uniqueEligible = {};
+        allData.forEach(row => {
+            const analystName = row.NOME || row.ANALISTA || row.NALISTA;
+            
+            // Se o analista da linha atual está na nossa lista de elegíveis...
+            if (eligibleNames.includes(analystName)) {
+                // ...armazenamos/atualizamos suas informações.
+                // Isso garante que pegaremos a última informação de monitor/produto do mês.
+                uniqueEligible[analystName] = {
+                    name: analystName,
+                    monitor: row['SUB OPERACÃO'] || row.SubOperacao, // Flexibilidade nos nomes de coluna
+                    product: row.PRODUTO || row.ProdutoPrincipal
+                };
             }
         });
-    });
+        return Object.values(uniqueEligible);
+    }
 
-    function calculateDistribution(analystsData) {
-        // 1. Agrupar analistas por "SubOperacao" (Monitor) e por produto
+    /**
+     * Parte 2: Calcula a distribuição das monitorias e exibe os resultados.
+     * @param {Array} analysts - A lista filtrada e única de analistas elegíveis.
+     */
+    function calculateAndDisplayDistribution(analysts) {
+        let finalAllocation = [];
         const monitors = {
             'Bru': { analysts: {}, totalMonitorias: 0 },
             'Nati': { analysts: {}, totalMonitorias: 0 },
             'Will': { analysts: {}, totalMonitorias: 0 }
         };
 
-        analystsData.forEach(analyst => {
-            const monitorName = analyst.SubOperacao;
-            const productName = analyst.ProdutoPrincipal;
-
-            if (monitors[monitorName] && productName) {
-                if (!monitors[monitorName].analysts[productName]) {
-                    monitors[monitorName].analysts[productName] = [];
-                }
-                monitors[monitorName].analysts[productName].push({ name: analyst.Analista, monitorias: 0 });
+        // Agrupar os analistas elegíveis por produto
+        const analystsByProduct = {};
+        analysts.forEach(analyst => {
+            if (!analyst.product) return;
+            if (!analystsByProduct[analyst.product]) {
+                analystsByProduct[analyst.product] = [];
             }
+            analystsByProduct[analyst.product].push(analyst);
         });
 
-        let finalAllocation = [];
-
-        // 2. Distribuir as monitorias por produto
+        // Distribuir as monitorias por produto
         for (const productName in PRODUCT_ALLOCATION) {
-            let totalMonitoriasProduto = PRODUCT_ALLOCATION[productName];
-            if (totalMonitoriasProduto === 0) continue;
+            const totalMonitoriasProduto = PRODUCT_ALLOCATION[productName];
+            const analystsForProduct = analystsByProduct[productName] || [];
 
-            // Encontra os monitores e analistas envolvidos com este produto
-            let analystsForProduct = [];
-            for (const monitorName in monitors) {
-                if (monitors[monitorName].analysts[productName]) {
-                   monitors[monitorName].analysts[productName].forEach(analyst => {
-                       analystsForProduct.push({ ...analyst, monitor: monitorName, product: productName });
-                   });
-                }
-            }
+            if (totalMonitoriasProduto === 0 || analystsForProduct.length === 0) continue;
 
-            if (analystsForProduct.length === 0) continue;
-
-            // Distribui as monitorias entre os analistas do produto
             let baseMonitorias = Math.floor(totalMonitoriasProduto / analystsForProduct.length);
             let remainder = totalMonitoriasProduto % analystsForProduct.length;
 
             analystsForProduct.forEach((analyst, index) => {
-                analyst.monitorias = baseMonitorias;
-                if (remainder > 0) {
-                    analyst.monitorias++;
-                    remainder--;
-                }
+                const allocated = baseMonitorias + (remainder-- > 0 ? 1 : 0);
+                finalAllocation.push({ ...analyst, monitorias: allocated });
             });
-
-            finalAllocation.push(...analystsForProduct);
         }
+        displayDistributionResults(finalAllocation);
+    }
+    
+    // --- FUNÇÕES DE EXIBIÇÃO NA TELA ---
 
-        displayAllocationResults(finalAllocation);
+    function displayEligibleAnalysts(analysts) {
+        eligibleAnalystsSection.style.display = 'block';
+        if (analysts.length === 0) {
+            eligibleAnalystsTable.innerHTML = '<p>Nenhum analista trabalhou mais de 10 dias consecutivos.</p>';
+            return;
+        }
+        let tableHTML = `
+            <table>
+                <thead>
+                    <tr><th>Analista Elegível</th><th>Dias Consecutivos (Máx)</th></tr>
+                </thead>
+                <tbody>
+        `;
+        analysts.forEach(a => {
+            tableHTML += `<tr><td>${a.name}</td><td><strong>${a.streak}</strong></td></tr>`;
+        });
+        tableHTML += '</tbody></table>';
+        eligibleAnalystsTable.innerHTML = tableHTML;
     }
 
-    function displayAllocationResults(allocation) {
+    function displayDistributionResults(allocation) {
+        distributionSection.style.display = 'block';
+        
         // --- Gerar tabela de resumo por monitor ---
         const summary = {};
+        let totalGeral = 0;
         allocation.forEach(item => {
             if (!summary[item.monitor]) {
                 summary[item.monitor] = { total: 0, products: {} };
@@ -194,72 +218,29 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             summary[item.monitor].products[item.product] += item.monitorias;
             summary[item.monitor].total += item.monitorias;
+            totalGeral += item.monitorias;
         });
 
         let summaryHTML = `
-            <table>
-                <thead>
-                    <tr>
-                        <th>Responsável</th>
-                        <th>Produto</th>
-                        <th>Qtd. Monitorias</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-        let totalGeral = 0;
+            <table><thead><tr><th>Responsável</th><th>Produto</th><th>Qtd. Monitorias</th></tr></thead><tbody>`;
         for (const monitor in summary) {
             let first = true;
             for(const product in summary[monitor].products) {
-                 summaryHTML += `
-                    <tr>
-                        ${first ? `<td rowspan="${Object.keys(summary[monitor].products).length}">${monitor}</td>` : ''}
-                        <td>${product}</td>
-                        <td>${summary[monitor].products[product]}</td>
-                    </tr>
-                `;
+                 summaryHTML += `<tr>${first ? `<td rowspan="${Object.keys(summary[monitor].products).length}">${monitor}</td>` : ''}<td>${product}</td><td>${summary[monitor].products[product]}</td></tr>`;
                 first = false;
             }
-             summaryHTML += `
-                <tr style="background-color: #d1e7dd;">
-                    <td colspan="2"><strong>Total ${monitor}</strong></td>
-                    <td><strong>${summary[monitor].total}</strong></td>
-                </tr>
-            `;
-            totalGeral += summary[monitor].total;
+             summaryHTML += `<tr style="background-color: #d1e7dd;"><td colspan="2"><strong>Total ${monitor}</strong></td><td><strong>${summary[monitor].total}</strong></td></tr>`;
         }
-        summaryHTML += `
-            <tr style="background-color: #343a40; color: white;">
-                <td colspan="2"><strong>TOTAL GERAL</strong></td>
-                <td><strong>${totalGeral}</strong></td>
-            </tr>
-        `;
+        summaryHTML += `<tr style="background-color: #343a40; color: white;"><td colspan="2"><strong>TOTAL GERAL DISTRIBUÍDO</strong></td><td><strong>${totalGeral}</strong></td></tr>`;
         summaryHTML += '</tbody></table>';
         summaryTableDiv.innerHTML = summaryHTML;
 
         // --- Gerar tabela detalhada por analista ---
         let detailHTML = `
-            <table>
-                <thead>
-                    <tr>
-                        <th>Analista</th>
-                        <th>Monitor Responsável</th>
-                        <th>Produto</th>
-                        <th>Qtd. Monitorias</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
-        allocation.sort((a, b) => a.monitor.localeCompare(b.monitor) || a.name.localeCompare(b.name));
+            <table><thead><tr><th>Analista</th><th>Monitor</th><th>Produto</th><th>Qtd. Monitorias</th></tr></thead><tbody>`;
+        allocation.sort((a, b) => (a.monitor || '').localeCompare(b.monitor || '') || a.name.localeCompare(b.name));
         allocation.forEach(item => {
-            detailHTML += `
-                <tr>
-                    <td>${item.name}</td>
-                    <td>${item.monitor}</td>
-                    <td>${item.product}</td>
-                    <td>${item.monitorias}</td>
-                </tr>
-            `;
+            detailHTML += `<tr><td>${item.name}</td><td>${item.monitor}</td><td>${item.product}</td><td>${item.monitorias}</td></tr>`;
         });
         detailHTML += '</tbody></table>';
         detailTableDiv.innerHTML = detailHTML;
