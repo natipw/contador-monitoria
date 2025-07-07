@@ -9,18 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const detailTableDiv = document.getElementById('allocation-detail-table');
 
     // --- CONFIGURAÇÕES GLOBAIS ---
-    const TOTAL_MONITORIAS = 800;
-    const PRODUCT_ALLOCATION = {
-        'Auto': 20,
-        'Check': 640,
-        'Doc': 20,
-        'ID Pay': 50,
-        'ID Unico': 20,
-        'IDCloud': 20,
-        'B2C': 30,
-        'Privacidade': 0,
-        'Institucional': 0 
-    };
+    const PRODUCT_ALLOCATION = { 'Auto': 20, 'Check': 640, 'Doc': 20, 'ID Pay': 50, 'ID Unico': 20, 'IDCloud': 20, 'B2C': 30, 'Privacidade': 0, 'Institucional': 0 };
 
     // --- EVENTO PRINCIPAL ---
     processReportBtn.addEventListener('click', () => {
@@ -31,56 +20,38 @@ document.addEventListener('DOMContentLoaded', () => {
         Papa.parse(reportFileInput.files[0], {
             header: true,
             skipEmptyLines: true,
-            transformHeader: header => header.trim().replace(/\W/g, ''), // Limpa cabeçalhos (remove acentos, espaços, etc)
+            bom: true, // Adicionado para remover caracteres invisíveis (BOM) do início do arquivo
             complete: (results) => {
+                console.log("Arquivo lido. Total de linhas:", results.data.length);
+                console.log("Exemplo da primeira linha de dados:", results.data[0]);
                 processFullReport(results.data);
             }
         });
     });
 
-    /**
-     * FUNÇÃO DE AJUDA: Normaliza uma data de DD/MM/AAAA para um objeto Date.
-     */
     function parseDate(dateString) {
         if (!dateString) return null;
-        if (dateString.match(/^\d{2}[-\/]\d{2}[-\/]\d{4}$/)) {
-            const parts = dateString.split(/[-\/]/);
+        if (dateString.match(/^\d{2}[\/-]\d{2}[\/-]\d{4}$/)) {
+            const parts = dateString.split(/[\/-]/);
             return new Date(parts[2], parts[1] - 1, parts[0]);
         }
-        if (dateString.match(/^\d{4}[-\/]\d{2}[-\/]\d{2}$/)) {
-            return new Date(dateString + 'T00:00:00');
+        if (dateString.match(/^\d{4}[\/-]\d{2}[\/-]\d{2}$/)) {
+            return new Date(dateString.replace(/\//g, '-') + 'T00:00:00');
         }
         return null;
     }
     
-    /**
-     * FUNÇÃO CHAVE: Mapeia o nome do time da coluna "SUB OPERACÃO" para um nome de produto.
-     * @param {string} teamName - O valor da coluna SUB OPERACÃO (ex: "CX - ID - N1").
-     * @returns {string|null} - O nome do produto correspondente (ex: "Check") ou null.
-     */
     function mapTeamToProduct(teamName) {
         if (!teamName) return null;
         const lowerTeamName = teamName.toLowerCase();
-
         if (lowerTeamName.includes('auto')) return 'Auto';
         if (lowerTeamName.includes('safedoc')) return 'Doc';
-        
-        // Assumindo que a maior parte do time de ID vai para o produto 'Check' por causa do volume (640 monitorias)
         if (lowerTeamName.includes('id - n1') || lowerTeamName.includes('id - n2')) return 'Check';
-
-        // Mapeamentos adicionais podem ser necessários aqui se houver outros times/produtos
         if (lowerTeamName.includes('special channels') || lowerTeamName.includes('institucional')) return 'Institucional';
         if (lowerTeamName.includes('b2c')) return 'B2C';
-        
-        // Adicione outros mapeamentos aqui conforme necessário
-        // Ex: if (lowerTeamName.includes('pay')) return 'ID Pay';
-
-        return null; // Retorna nulo se não encontrar um produto correspondente
+        return null;
     }
 
-    /**
-     * Função principal que orquestra todo o processo.
-     */
     function processFullReport(reportData) {
         const eligibleAnalystsData = findEligibleAnalysts(reportData);
         displayEligibleAnalysts(eligibleAnalystsData);
@@ -96,27 +67,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function findEligibleAnalysts(data) {
         const analystsWorkDays = {};
+        
         data.forEach(row => {
             const analystName = row.NOME || row.ANALISTA;
             const dateString = row.DATA;
             const scaleStatus = (row.ESCALA || '').toLowerCase();
             const parsedDate = parseDate(dateString);
 
-            if (!analystName || !parsedDate || scaleStatus.includes('folga') || scaleStatus.includes('férias') || scaleStatus.includes('ferias') || scaleStatus.includes('não escalado')) {
+            // Pula a linha se não tiver nome ou data
+            if (!analystName || !parsedDate) {
                 return;
             }
 
+            // *** MUDANÇA CRÍTICA AQUI ***
+            // Agora, só contamos o dia se a escala for EXATAMENTE "escalado".
+            if (scaleStatus !== 'escalado') {
+                return; // Ignora folgas, férias, "não escalado", etc.
+            }
+            
+            // Se chegou até aqui, é um dia de trabalho válido.
             if (!analystsWorkDays[analystName]) {
                 analystsWorkDays[analystName] = new Set();
             }
             analystsWorkDays[analystName].add(parsedDate.getTime());
         });
 
+        console.log("Analistas e seus dias de trabalho contados:", analystsWorkDays);
+
         const longStreakAnalysts = [];
         for (const name in analystsWorkDays) {
             if (analystsWorkDays[name].size <= 10) continue;
+            
             const dates = Array.from(analystsWorkDays[name]).map(time => new Date(time)).sort((a, b) => a - b);
             let currentStreak = 1, maxStreak = 1;
+
             for (let i = 1; i < dates.length; i++) {
                 const diffDays = (dates[i] - dates[i - 1]) / (1000 * 60 * 60 * 24);
                 if (diffDays === 1) {
@@ -131,6 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 longStreakAnalysts.push({ name, streak: maxStreak });
             }
         }
+        console.log("Analistas encontrados com mais de 10 dias de trabalho:", longStreakAnalysts);
         return longStreakAnalysts;
     }
 
@@ -139,8 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
         allData.forEach(row => {
             const analystName = row.NOME || row.ANALISTA;
             if (eligibleNames.includes(analystName)) {
-                // Aqui acontece a "tradução" do time para o produto
-                const teamName = row.SUBOPERACAO || row.SUBOPERACÃO; // Tenta com e sem acento
+                const teamName = row['SUB OPERACÃO'] || row['SUB OPERAÇÃO']; // Trata os dois nomes de coluna
                 uniqueEligible[analystName] = {
                     name: analystName,
                     product: mapTeamToProduct(teamName)
@@ -179,17 +163,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         displayDistributionResults(finalAllocation);
     }
-
-    // --- FUNÇÕES DE EXIBIÇÃO ---
-
+    
     function displayEligibleAnalysts(analysts) {
         eligibleAnalystsSection.style.display = 'block';
         if (analysts.length === 0) {
             eligibleAnalystsTable.innerHTML = '<p>Nenhum analista trabalhou mais de 10 dias consecutivos.</p>';
             return;
         }
-        let tableHTML = `
-            <table><thead><tr><th>Analista Elegível</th><th>Dias Consecutivos (Máx)</th></tr></thead><tbody>`;
+        let tableHTML = `<table><thead><tr><th>Analista Elegível</th><th>Dias Consecutivos (Máx)</th></tr></thead><tbody>`;
         analysts.sort((a,b) => a.name.localeCompare(b.name));
         analysts.forEach(a => {
             tableHTML += `<tr><td>${a.name}</td><td><strong>${a.streak}</strong></td></tr>`;
@@ -204,10 +185,8 @@ document.addEventListener('DOMContentLoaded', () => {
             detailTableDiv.innerHTML = '<p>Não foi possível distribuir monitorias. Verifique se os times no CSV correspondem aos produtos configurados.</p>';
             return;
         }
-
-        let detailHTML = `
-            <table><thead><tr><th>Analista</th><th>Produto Mapeado</th><th>Qtd. Monitorias</th></tr></thead><tbody>`;
-        allocation.sort((a, b) => a.product.localeCompare(b.product) || a.name.localeCompare(b.name));
+        let detailHTML = `<table><thead><tr><th>Analista</th><th>Produto Mapeado</th><th>Qtd. Monitorias</th></tr></thead><tbody>`;
+        allocation.sort((a, b) => (a.product || '').localeCompare(b.product || '') || a.name.localeCompare(b.name));
         let totalGeral = 0;
         allocation.forEach(item => {
             detailHTML += `<tr><td>${item.name}</td><td>${item.product}</td><td>${item.monitorias}</td></tr>`;
