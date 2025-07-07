@@ -1,6 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
 
-    // --- ELEMENTOS DA PÁGINA ---
     const reportFileInput = document.getElementById('report-file-input');
     const processReportBtn = document.getElementById('process-report-btn');
     const eligibleAnalystsSection = document.getElementById('eligible-analysts-section');
@@ -8,10 +7,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const eligibleAnalystsTable = document.getElementById('eligible-analysts-table');
     const detailTableDiv = document.getElementById('allocation-detail-table');
 
-    // --- CONFIGURAÇÕES GLOBAIS ---
     const PRODUCT_ALLOCATION = { 'Auto': 20, 'Check': 640, 'Doc': 20, 'ID Pay': 50, 'ID Unico': 20, 'IDCloud': 20, 'B2C': 30, 'Privacidade': 0, 'Institucional': 0 };
 
-    // --- EVENTO PRINCIPAL ---
     processReportBtn.addEventListener('click', () => {
         if (reportFileInput.files.length === 0) {
             alert('Por favor, selecione o relatório mensal em CSV.');
@@ -20,10 +17,15 @@ document.addEventListener('DOMContentLoaded', () => {
         Papa.parse(reportFileInput.files[0], {
             header: true,
             skipEmptyLines: true,
-            bom: true, // Adicionado para remover caracteres invisíveis (BOM) do início do arquivo
+            // *** MUDANÇA CRÍTICA: Limpa os cabeçalhos para evitar erros com acentos ou espaços ***
+            transformHeader: header => header.trim().toLowerCase().replace(/[^a-zA-Z0-9]/g, ''),
             complete: (results) => {
-                console.log("Arquivo lido. Total de linhas:", results.data.length);
-                console.log("Exemplo da primeira linha de dados:", results.data[0]);
+                console.log("--- INÍCIO DO DIAGNÓSTICO ---");
+                if (results.errors.length > 0) {
+                    console.error("Erros de parse:", results.errors);
+                }
+                console.log("Cabeçalhos transformados:", Object.keys(results.data[0]));
+                console.log("Exemplo da primeira linha de dados lida:", results.data[0]);
                 processFullReport(results.data);
             }
         });
@@ -40,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         return null;
     }
-    
+
     function mapTeamToProduct(teamName) {
         if (!teamName) return null;
         const lowerTeamName = teamName.toLowerCase();
@@ -52,55 +54,37 @@ document.addEventListener('DOMContentLoaded', () => {
         return null;
     }
 
-    function processFullReport(reportData) {
-        const eligibleAnalystsData = findEligibleAnalysts(reportData);
-        displayEligibleAnalysts(eligibleAnalystsData);
-
-        if (eligibleAnalystsData.length > 0) {
-            const analystsForDistribution = getUniqueEligibleAnalysts(reportData, eligibleAnalystsData.map(a => a.name));
-            calculateAndDisplayDistribution(analystsForDistribution);
-        } else {
-            distributionSection.style.display = 'block';
-            detailTableDiv.innerHTML = '<p>Nenhum analista elegível encontrado para distribuir as monitorias.</p>';
-        }
-    }
-
     function findEligibleAnalysts(data) {
         const analystsWorkDays = {};
-        
         data.forEach(row => {
-            const analystName = row.NOME || row.ANALISTA;
-            const dateString = row.DATA;
-            const scaleStatus = (row.ESCALA || '').toLowerCase();
+            // Usa os nomes de coluna já limpos e em minúsculo
+            const analystName = row.nome || row.analista;
+            const dateString = row.data;
+            const scaleStatus = (row.escala || '').toLowerCase();
             const parsedDate = parseDate(dateString);
 
-            // Pula a linha se não tiver nome ou data
-            if (!analystName || !parsedDate) {
-                return;
-            }
-
-            // *** MUDANÇA CRÍTICA AQUI ***
-            // Agora, só contamos o dia se a escala for EXATAMENTE "escalado".
-            if (scaleStatus !== 'escalado') {
-                return; // Ignora folgas, férias, "não escalado", etc.
-            }
+            if (!analystName || !parsedDate) return;
+            if (scaleStatus !== 'escalado') return;
             
-            // Se chegou até aqui, é um dia de trabalho válido.
             if (!analystsWorkDays[analystName]) {
                 analystsWorkDays[analystName] = new Set();
             }
             analystsWorkDays[analystName].add(parsedDate.getTime());
         });
 
-        console.log("Analistas e seus dias de trabalho contados:", analystsWorkDays);
-
+        // --- PARTE DO DIAGNÓSTICO ---
+        if (Object.keys(analystsWorkDays).length === 0) {
+            alert("ERRO DE LEITURA: Nenhum dia de trabalho foi contabilizado. Verifique o Console (F12) para detalhes.");
+            console.error("FALHA: O objeto 'analystsWorkDays' está vazio. Isso significa que a condição 'scaleStatus === 'escalado'' nunca foi verdadeira, ou os nomes das colunas 'nome'/'data'/'escala' não foram encontrados. Verifique os cabeçalhos transformados acima.");
+        } else {
+            console.log("SUCESSO: Dias de trabalho foram contados para", Object.keys(analystsWorkDays).length, "analistas.");
+        }
+        
         const longStreakAnalysts = [];
         for (const name in analystsWorkDays) {
             if (analystsWorkDays[name].size <= 10) continue;
-            
             const dates = Array.from(analystsWorkDays[name]).map(time => new Date(time)).sort((a, b) => a - b);
             let currentStreak = 1, maxStreak = 1;
-
             for (let i = 1; i < dates.length; i++) {
                 const diffDays = (dates[i] - dates[i - 1]) / (1000 * 60 * 60 * 24);
                 if (diffDays === 1) {
@@ -115,26 +99,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 longStreakAnalysts.push({ name, streak: maxStreak });
             }
         }
-        console.log("Analistas encontrados com mais de 10 dias de trabalho:", longStreakAnalysts);
         return longStreakAnalysts;
     }
 
     function getUniqueEligibleAnalysts(allData, eligibleNames) {
         const uniqueEligible = {};
         allData.forEach(row => {
-            const analystName = row.NOME || row.ANALISTA;
+            const analystName = row.nome || row.analista;
             if (eligibleNames.includes(analystName)) {
-                const teamName = row['SUB OPERACÃO'] || row['SUB OPERAÇÃO']; // Trata os dois nomes de coluna
-                uniqueEligible[analystName] = {
-                    name: analystName,
-                    product: mapTeamToProduct(teamName)
-                };
+                const teamName = row.suboperacao; // Usa o nome de coluna limpo
+                uniqueEligible[analystName] = { name: analystName, product: mapTeamToProduct(teamName) };
             }
         });
         return Object.values(uniqueEligible);
     }
-
-    function calculateAndDisplayDistribution(analysts) {
+    
+    // As funções abaixo não precisam de alteração
+    function processFullReport(reportData) {
+        const eligibleAnalystsData = findEligibleAnalysts(reportData);
+        displayEligibleAnalysts(eligibleAnalystsData);
+        if (eligibleAnalystsData.length > 0) {
+            const analystsForDistribution = getUniqueEligibleAnalysts(reportData, eligibleAnalystsData.map(a => a.name));
+            calculateAndDisplayDistribution(analystsForDistribution);
+        } else {
+            distributionSection.style.display = 'block';
+            detailTableDiv.innerHTML = '<p>Nenhum analista elegível encontrado para distribuir as monitorias.</p>';
+        }
+    }
+    function calculateAndDisplayDistribution(analysts) { /* ...código sem alteração... */
         let finalAllocation = [];
         const analystsByProduct = {};
         analysts.forEach(analyst => {
@@ -145,15 +137,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 analystsByProduct[analyst.product].push(analyst);
             }
         });
-
         for (const productName in PRODUCT_ALLOCATION) {
             const totalMonitoriasProduto = PRODUCT_ALLOCATION[productName];
             const analystsForProduct = analystsByProduct[productName] || [];
             if (totalMonitoriasProduto === 0 || analystsForProduct.length === 0) continue;
-
             let baseMonitorias = Math.floor(totalMonitoriasProduto / analystsForProduct.length);
             let remainder = totalMonitoriasProduto % analystsForProduct.length;
-
             analystsForProduct.forEach((analyst) => {
                 const allocated = baseMonitorias + (remainder-- > 0 ? 1 : 0);
                 if (allocated > 0) {
@@ -163,8 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         displayDistributionResults(finalAllocation);
     }
-    
-    function displayEligibleAnalysts(analysts) {
+    function displayEligibleAnalysts(analysts) { /* ...código sem alteração... */
         eligibleAnalystsSection.style.display = 'block';
         if (analysts.length === 0) {
             eligibleAnalystsTable.innerHTML = '<p>Nenhum analista trabalhou mais de 10 dias consecutivos.</p>';
@@ -178,8 +166,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tableHTML += '</tbody></table>';
         eligibleAnalystsTable.innerHTML = tableHTML;
     }
-
-    function displayDistributionResults(allocation) {
+    function displayDistributionResults(allocation) { /* ...código sem alteração... */
         distributionSection.style.display = 'block';
         if (allocation.length === 0) {
             detailTableDiv.innerHTML = '<p>Não foi possível distribuir monitorias. Verifique se os times no CSV correspondem aos produtos configurados.</p>';
